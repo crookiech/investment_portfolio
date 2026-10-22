@@ -1,8 +1,8 @@
 from bs4 import BeautifulSoup
 from pathlib import Path
-from typing import Optional
 from datetime import datetime, date
 from pydantic import BaseModel, ValidationError
+import requests
 import os
 import re
 
@@ -14,7 +14,6 @@ def to_float(s: str, default: float | None = None) -> float | None:
     if not s:
         return default
     return float(s)
-
 
 def to_int(s: str, default: int | None = None) -> int | None:
     v = to_float(s, default=None)
@@ -101,13 +100,56 @@ def report_parse(soup: BeautifulSoup) -> Report:
         print(f"Error: {e}")
         return None
 
-def html_parse(report_path):
+def html_parse(report_path) -> Report:
     print("Parsing HTML...")
     raw = Path(report_path).read_bytes()
     soup = BeautifulSoup(raw, "lxml")
 
     report: Report = report_parse(soup)
-    print(report)
+
+    return report
+
+def get_current_usd_rate() -> float:
+    url = "https://www.cbr.ru/scripts/XML_daily.asp"
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'xml')
+    for valute in soup.find_all("Valute"):
+        char_code = valute.find("CharCode")
+        if (char_code.text == "USD"):
+            value = valute.find("Value")
+    return float(value.text.replace(",", "."))
+
+def calc_investment_portfolio_value(report: Report, usd_rate: float) -> float:
+    value_RUB = [security.value for security in report.securities if security.currency == "RUB"]
+    value_USD = [(security.value * usd_rate) for security in report.securities if security.currency == "USD"]
+    value = sum(value_RUB) + sum(value_USD)
+    return value
+
+def calc_share_asset_in_investment_portfolio(report: Report, usd_rate: float) -> dict:
+    weights = {}
+    asset_RUB = [security.value for security in report.securities if security.currency == "RUB"]
+    asset_USD = [(security.value * usd_rate) for security in report.securities if security.currency == "USD"]
+    asset_value = sum(asset_RUB) + sum(asset_USD)
+    for security in report.securities:
+        value_rub = security.value * (usd_rate if security.currency == "USD" else 1.0)
+        weights[security.name] = value_rub / asset_value
+    return weights
+
+def parse(report_path: Path) -> Report | None:
+    if not report_path.exists():
+        print(f"File {report_path} doesn't exist")
+        return None
+    if report_path.is_dir():
+        print(f"{report_path} is a directory")
+        return None
+
+    match report_path.suffix.lower():
+        case ".html":
+            print("Starting the parsing HTML")
+            return html_parse(report_path)
+        case _:
+            print(f"{report_path.suffix} cannot be parsed")
+            return None
 
 if __name__ == "__main__":
     while(REPORT_PATH_ERROR):
@@ -131,6 +173,11 @@ if __name__ == "__main__":
     match file_format:
         case ".html":
             print("Starting the parsing HTML")
-            html_parse(report_path)
+            report = html_parse(report_path)
+            print(report)
+            usd_rate = get_current_usd_rate()
+            print(f"Dollar exchange rate: {usd_rate}")
+            print(calc_investment_portfolio_value(report, usd_rate))
+            print(calc_share_asset_in_investment_portfolio(report, usd_rate))
         case _:
             print(f"{file_format} cannot be parsed")
