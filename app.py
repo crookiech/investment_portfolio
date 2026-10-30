@@ -3,7 +3,8 @@ import pathlib
 import pandas as pd
 import plotly.express as px
 import streamlit
-from parser import parse, get_current_usd_rate, calc_investment_portfolio_value, calc_share_asset_in_investment_portfolio
+from parser import parse
+from html_parser import get_current_usd_rate, calc_investment_portfolio_value, calc_share_asset_in_investment_portfolio
 
 streamlit.set_page_config(page_title="Инвестиционный портфель", layout="wide")
 streamlit.title("Структура инвестиционного портфеля")
